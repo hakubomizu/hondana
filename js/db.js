@@ -95,7 +95,7 @@ const DB = (() => {
     return txDone(tx);
   }
 
-  /** 複数の本をまとめて保存する（好きな順番の並べ替え結果の保存に使う） */
+  /** 複数の本をまとめて保存する（オリジナル番の並べ替え結果の保存に使う） */
   async function putBooks(books) {
     const db = await open();
     const tx = db.transaction('books', 'readwrite');

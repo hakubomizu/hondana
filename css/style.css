@@ -26,6 +26,7 @@
   --line: #D9DEE3;       /* 区切り線 */
   --ai: #23466E;         /* 藍色：主要なボタン・リンク */
   --ai-ink: #FFFFFF;     /* 藍色の上に置く文字 */
+  --ai-soft: #4F7AA8;    /* 薄い藍色：2 番手のボタン。白い文字が読める濃さにしてある */
   --done: #2F6E4B;       /* 読了を表す緑 */
   --danger: #A83232;     /* 削除などの注意を表す赤 */
   --warn-bg: #FFF4D6;    /* 注意メッセージの背景 */
@@ -164,6 +165,13 @@ h1, h2, h3, p { margin: 0; }
   background: var(--ai);
   border-color: var(--ai);
   color: var(--ai-ink);
+  font-weight: 600;
+}
+/* 2 番手のボタン：主要なボタンと同じ形で、色だけ薄い藍色にしたもの（文字は白） */
+.btn-secondary {
+  background: var(--ai-soft);
+  border-color: var(--ai-soft);
+  color: #FFFFFF;
   font-weight: 600;
 }
 .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }

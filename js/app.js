@@ -4,7 +4,7 @@
  * このファイルの構成
  *   1. 共通の準備（状態・補助関数・お知らせ表示）
  *   2. 画面の切り替え（ルーター）
- *   3. 一覧画面（検索・並べ替え・好きな順のドラッグ）
+ *   3. 一覧画面（検索・並べ替え・オリジナルのドラッグ）
  *   4. 詳細画面
  *   5. 登録・編集画面（バーコード読み取り・書誌検索・写真・重複チェック）
  *   6. 設定画面（ジャンル管理・バックアップ・書誌検索の設定）
@@ -41,11 +41,12 @@ const App = (() => {
   const STATUS = { unread: '未読', reading: '読書中', done: '読了' };
 
   // 並べ替えの種類。[内部の値, 画面に出す言葉]
+  // この配列の順番が、一覧画面のボタンの左からの並び順になる
   const SORTS = [
     ['yomi', '五十音順'],
+    ['new', '登録順'],
     ['genre', 'ジャンル別'],
-    ['custom', '好きな順'],
-    ['new', '登録順']
+    ['custom', 'オリジナル']   // 利用者がドラッグで決めた順番
   ];
 
   // 日本語の順序で文字列を比べる道具。numeric:true で「2巻」が「10巻」より前に来る
@@ -229,7 +230,7 @@ const App = (() => {
       drawList();
     });
 
-    // 「好きな順」のときのドラッグ並べ替えを有効にする
+    // 「オリジナル」のときのドラッグ並べ替えを有効にする
     enableReorder($('#list'));
 
     drawList();
@@ -335,7 +336,7 @@ const App = (() => {
       }).join('');
 
     } else if (state.sort === 'custom') {
-      // ----- 好きな順：利用者が決めた順番（order の小さい順） -----
+      // ----- オリジナル：利用者が決めた順番（order の小さい順） -----
       books.sort((a, b) => (a.order || 0) - (b.order || 0));
       const searching = Boolean(state.query.trim());
       const note = searching
@@ -358,7 +359,7 @@ const App = (() => {
   }
 
   /* ---------------------------------------------------------------
-   * 「好きな順」のドラッグ並べ替え。
+   * 「オリジナル」のドラッグ並べ替え。
    *
    * iPhone のブラウザは、パソコン向けの標準的なドラッグ機能（drag & drop）に
    * 十分対応していないため、指やマウスの動き（pointer イベント）を使って
@@ -1361,7 +1362,7 @@ const App = (() => {
     if (!form.editing) {
       book.id = Util.uid();
       book.createdAt = now;
-      // 「好きな順」では一番下に追加する（今ある最大の番号 + 1）
+      // 「オリジナル」では一番下に追加する（今ある最大の番号 + 1）
       book.order = state.books.reduce((max, b) => Math.max(max, b.order || 0), -1) + 1;
     }
 
@@ -1436,7 +1437,7 @@ const App = (() => {
             : 'まだ書き出していません'}</p>
           <div class="btn-row">
             <button type="button" id="exportBtn" class="btn btn-primary">写真ごと書き出す</button>
-            <button type="button" id="exportLightBtn" class="btn">書誌情報のみ書き出す（写真なし）</button>
+            <button type="button" id="exportLightBtn" class="btn btn-secondary">書誌情報のみ書き出す（写真なし）</button>
           </div>
           <p class="note">「写真ごと」は全てを復元できますが、ファイルが大きくなります。「書誌情報のみ」は題名・作者・ジャンル・シリーズ・メモなどの文字の情報だけを書き出すので、ファイルが小さく済みます。</p>
           <div class="btn-row">
