@@ -98,17 +98,27 @@ const Backup = (() => {
    *   mode = 'merge'   … 今のデータに、バックアップの内容を追加する
    * --------------------------------------------------------------- */
   async function restore(data, mode) {
-    // 追加の場合は、今あるジャンル一覧を先に控えておく
-    const currentGenres = mode === 'merge' ? await DB.getSetting('genres', []) : [];
+    // 名前の一覧を持つ設定（ジャンル一覧・シリーズ一覧）
+    const LIST_KEYS = ['genres', 'seriesList'];
+
+    // 追加の場合は、今ある一覧を先に控えておく
+    const current = {};
+    if (mode === 'merge') {
+      for (const key of LIST_KEYS) {
+        current[key] = await DB.getSetting(key, []);
+      }
+    }
 
     await DB.importAll(data, mode);
 
     if (mode === 'merge') {
-      // ジャンル一覧は「今のもの」と「バックアップのもの」を合わせて保存し直す
-      const row = (data.settings || []).find((s) => s.key === 'genres');
-      const backupGenres = row && Array.isArray(row.value) ? row.value : [];
-      const merged = Array.from(new Set(currentGenres.concat(backupGenres)));
-      await DB.setSetting('genres', merged);
+      // 一覧は「今のもの」と「バックアップのもの」を合わせて保存し直す
+      for (const key of LIST_KEYS) {
+        const row = (data.settings || []).find((s) => s.key === key);
+        const fromBackup = row && Array.isArray(row.value) ? row.value : [];
+        const merged = Array.from(new Set(current[key].concat(fromBackup)));
+        await DB.setSetting(key, merged);
+      }
     }
   }
 

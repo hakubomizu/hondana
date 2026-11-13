@@ -9,6 +9,7 @@
  *   5. 登録・編集画面（バーコード読み取り・書誌検索・写真・重複チェック）
  *   6. 設定画面（ジャンル管理・バックアップ・書誌検索の設定）
  *   7. 起動処理
+ *   8. シリーズ画面（シリーズの一覧・シリーズごとの本・本の選択）
  *
  * 画面の切り替えは URL の「#」以降（ハッシュ）で行います。
  *   #/            … 一覧
@@ -16,6 +17,9 @@
  *   #/add         … 新しい本の登録
  *   #/edit/本のID … 編集
  *   #/settings    … 設定
+ *   #/series                  … シリーズの一覧
+ *   #/series/シリーズ名       … そのシリーズの本
+ *   #/series/シリーズ名/pick  … そのシリーズに入れる本の選択
  * ページ全体を読み込み直さずに <main id="view"> の中身だけを書き換えるので、
  * 電波が無い場所でも画面を移動できます。
  * ===================================================================== */
@@ -36,7 +40,7 @@ const App = (() => {
 
   // 並べ替えの種類。[内部の値, 画面に出す言葉]
   const SORTS = [
-    ['yomi', 'あいうえお順'],
+    ['yomi', '五十音順'],
     ['genre', 'ジャンル別'],
     ['custom', '好きな順'],
     ['new', '登録順']
@@ -49,6 +53,7 @@ const App = (() => {
   const state = {
     books: [],       // 全ての本（一覧用。写真本体は含まない）
     genres: [],      // ジャンル名の一覧（設定画面での並び順）
+    series: [],      // 利用者が名付けたシリーズ名の一覧
     sort: 'yomi',    // 現在の並べ替え
     query: '',       // 検索欄に入力されている文字
     listScroll: 0,   // 一覧画面のスクロール位置（詳細から戻ったとき元の位置に戻すため）
@@ -93,7 +98,7 @@ const App = (() => {
     return hue === null ? '' : ` style="--h:${hue}"`;
   }
 
-  /** あいうえお順の比較。よみが同じなら巻数の順にする */
+  /** 五十音順の比較。よみが同じなら巻数の順にする */
   function compareYomi(a, b) {
     return (
       collator.compare(Util.sortKey(a), Util.sortKey(b)) ||
@@ -119,7 +124,7 @@ const App = (() => {
     form = null;
 
     const hash = location.hash.replace(/^#\/?/, ''); // 例：「book/abc123」
-    const [name, id] = hash.split('/');
+    const [name, id, sub] = hash.split('/');
 
     try {
       if (name === 'book' && id) {
@@ -137,6 +142,13 @@ const App = (() => {
       } else if (name === 'settings') {
         state.route = 'settings';
         await renderSettings();
+        window.scrollTo(0, 0);
+      } else if (name === 'series') {
+        // シリーズ名は URL に入れるとき記号に変換（エンコード）しているので、元に戻して使う
+        state.route = 'series';
+        if (id && sub === 'pick') await renderSeriesPick(decodeURIComponent(id));
+        else if (id) await renderSeriesDetail(decodeURIComponent(id));
+        else await renderSeriesList();
         window.scrollTo(0, 0);
       } else {
         state.route = 'list';
@@ -184,6 +196,7 @@ const App = (() => {
         <input type="search" id="q" class="search" placeholder="題名・作者・出版社で検索"
           value="${Util.esc(state.query)}" aria-label="本を検索" autocomplete="off">
         <div class="seg" role="group" aria-label="並べ替え">${sortButtons}</div>
+        <a class="btn series-btn" href="#/series">シリーズ</a>
       </div>
       <div id="list"></div>
       <a class="fab" href="#/add">本を登録</a>
@@ -287,7 +300,7 @@ const App = (() => {
     let html = '';
 
     if (state.sort === 'genre') {
-      // ----- ジャンル別：ジャンルごとに見出しを付け、その中はあいうえお順 -----
+      // ----- ジャンル別：ジャンルごとに見出しを付け、その中は五十音順 -----
       const groups = new Map();
       books.forEach((b) => {
         const key = b.genre || '';
@@ -324,7 +337,7 @@ const App = (() => {
       html = note + `<ul class="rows" id="customRows">${books.map((b) => rowHtml(b, !searching)).join('')}</ul>`;
 
     } else {
-      // ----- あいうえお順／登録順 -----
+      // ----- 五十音順／登録順 -----
       if (state.sort === 'new') {
         books.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // 新しく登録した本が上
       } else {
@@ -475,12 +488,16 @@ const App = (() => {
       ['作者', book.author],
       ['出版社', book.publisher],
       ['ジャンル', book.genre || '未分類'],
-      ['シリーズ', book.series],
+      // シリーズ名は、押すとそのシリーズのページへ移動できるようリンクにする
+      ['シリーズ', book.series, book.series ? seriesHref(book.series) : ''],
       ['巻数', book.volume],
       ['ISBN', book.isbn],
       ['登録日', Util.formatDate(book.createdAt)]
     ].filter(([, value]) => value)
-      .map(([label, value]) => `<div class="fact"><dt>${label}</dt><dd>${Util.esc(value)}</dd></div>`)
+      .map(([label, value, href]) => {
+        const body = href ? `<a href="${href}">${Util.esc(value)}</a>` : Util.esc(value);
+        return `<div class="fact"><dt>${label}</dt><dd>${body}</dd></div>`;
+      })
       .join('');
 
     const statusButtons = Object.keys(STATUS).map((key) =>
@@ -584,6 +601,17 @@ const App = (() => {
     );
   }
 
+  /** シリーズ選択欄の選択肢の HTML を作る */
+  function seriesOptionsHtml(selected) {
+    const names = allSeries();
+    if (selected && !names.includes(selected)) names.push(selected);
+    return (
+      `<option value="">なし</option>` +
+      names.map((s) => `<option value="${Util.esc(s)}"${s === selected ? ' selected' : ''}>${Util.esc(s)}</option>`).join('') +
+      `<option value="__new__">＋ 新しいシリーズを追加…</option>`
+    );
+  }
+
   /* ---------------------------------------------------------------
    * 登録・編集画面を表示する。
    *   id が null … 新しい本の登録
@@ -632,7 +660,7 @@ const App = (() => {
         </section>
 
         ${fieldHtml('題名（必須）', 'title', b.title, 'required')}
-        ${fieldHtml('よみがな', 'titleYomi', b.titleYomi, 'placeholder="あいうえお順の並べ替えに使います"')}
+        ${fieldHtml('よみがな', 'titleYomi', b.titleYomi, 'placeholder="五十音順の並べ替えに使います"')}
         ${fieldHtml('作者', 'author', b.author)}
         ${fieldHtml('出版社', 'publisher', b.publisher)}
 
@@ -647,7 +675,10 @@ const App = (() => {
         </fieldset>
 
         <div class="field-pair">
-          ${fieldHtml('シリーズ名', 'series', b.series)}
+          <label class="field">
+            <span class="field-label">シリーズ</span>
+            <select id="f-series">${seriesOptionsHtml(b.series || '')}</select>
+          </label>
           ${fieldHtml('巻数', 'volume', b.volume)}
         </div>
 
@@ -695,6 +726,17 @@ const App = (() => {
       }
       // 選択肢を作り直し、追加したジャンル（取り消した場合は未分類）を選んだ状態にする
       e.target.innerHTML = genreOptionsHtml(name || '');
+    });
+
+    // シリーズで「新しいシリーズを追加」を選んだとき（ジャンルと同じ仕組み）
+    $('#f-series').addEventListener('change', async (e) => {
+      if (e.target.value !== '__new__') return;
+      const name = (prompt('新しいシリーズの名前を入力してください') || '').trim();
+      if (name && !allSeries().includes(name)) {
+        state.series.push(name);
+        await DB.setSetting('seriesList', state.series);
+      }
+      e.target.innerHTML = seriesOptionsHtml(name || '');
     });
 
     // 保存ボタン（Enter キーでの送信もここに来る）
@@ -784,7 +826,8 @@ const App = (() => {
       if (currentTitle && currentTitle !== found.title) {
         overwrite = confirm('入力済みの内容を、取得した書誌データで上書きしますか？\n（キャンセルすると、空欄だけを埋めます）');
       }
-      ['title', 'titleYomi', 'author', 'publisher', 'series', 'volume'].forEach((key) => {
+      // シリーズは利用者が自分で名付けて管理するため、書誌データからは入力しない
+      ['title', 'titleYomi', 'author', 'publisher', 'volume'].forEach((key) => {
         const input = $('#f-' + key);
         if (found[key] && (overwrite || !input.value.trim())) input.value = found[key];
       });
@@ -863,6 +906,7 @@ const App = (() => {
       isbn = normalized;
     }
     const genreValue = $('#f-genre').value;
+    const seriesValue = $('#f-series').value;
     const checked = document.querySelector('input[name="status"]:checked');
 
     // ----- 保存する本のデータを組み立てる（編集時は元のデータに上書き） -----
@@ -875,7 +919,7 @@ const App = (() => {
       isbn,
       genre: genreValue === '__new__' ? '' : genreValue,
       status: checked ? checked.value : 'unread',
-      series: value('series'),
+      series: seriesValue === '__new__' ? '' : seriesValue,
       volume: value('volume'),
       memo: $('#f-memo').value.trim(),
       updatedAt: now
@@ -1088,6 +1132,7 @@ const App = (() => {
       if (!confirm('本当に削除しますか？ バックアップを書き出していない場合、データは失われます。')) return;
       await DB.clearAll();
       state.genres = [];
+      state.series = [];
       state.sort = 'yomi';
       state.query = '';
       toast('すべてのデータを削除しました');
@@ -1163,6 +1208,7 @@ const App = (() => {
         await Backup.restore(data, mode);
         // 設定（ジャンル・並べ替え）を読み直してから画面を描き直す
         state.genres = await DB.getSetting('genres', []);
+        state.series = await DB.getSetting('seriesList', []);
         state.sort = await DB.getSetting('sort', 'yomi');
         toast('バックアップを読み込みました');
         await renderSettings();
@@ -1181,6 +1227,7 @@ const App = (() => {
     // ----- 保存してある設定を読み込む -----
     try {
       state.genres = await DB.getSetting('genres', []);
+      state.series = await DB.getSetting('seriesList', []);
       state.sort = await DB.getSetting('sort', 'yomi');
     } catch (err) {
       console.error(err);
@@ -1216,6 +1263,219 @@ const App = (() => {
         console.warn('サービスワーカーを登録できませんでした:', err);
       });
     }
+  }
+
+  /* =================================================================
+   * 8. シリーズ画面
+   *
+   * シリーズは利用者が自分で名前を付けて作る「本のまとまり」。
+   * データの持ち方：
+   *   ・シリーズ名の一覧 … 設定の 'seriesList' に保存（本が 0 冊のシリーズも残すため）
+   *   ・どの本がどのシリーズか … 各本の series にシリーズ名を入れる（1 冊につき 1 シリーズ）
+   * ================================================================= */
+
+  /** 全てのシリーズ名を返す（一覧に無いが本に付いている名前も含める） */
+  function allSeries() {
+    const names = state.series.slice();
+    state.books.forEach((b) => {
+      if (b.series && !names.includes(b.series)) names.push(b.series);
+    });
+    return names;
+  }
+
+  /** シリーズのページへのリンク先を作る。名前に記号が入っていても URL が壊れないよう変換する */
+  function seriesHref(name) {
+    return '#/series/' + encodeURIComponent(name);
+  }
+
+  /** 巻数の順に比べる（巻数が同じ・無い場合は五十音順） */
+  function compareVolume(a, b) {
+    return collator.compare(a.volume || '', b.volume || '') || compareYomi(a, b);
+  }
+
+  /* ---------------------------------------------------------------
+   * シリーズの一覧画面。シリーズ名と冊数を並べ、新しいシリーズを作れる。
+   * --------------------------------------------------------------- */
+  async function renderSeriesList() {
+    state.books = await DB.getAllBooks();
+    const names = allSeries().sort(collator.compare);
+
+    const rows = names.length
+      ? names.map((name) => {
+          const count = state.books.filter((b) => b.series === name).length;
+          return `
+            <li class="row">
+              <a class="row-link series-link" href="${seriesHref(name)}">
+                <span class="row-title">${Util.esc(name)}</span>
+                <span class="group-count">${count} 冊</span>
+              </a>
+            </li>`;
+        }).join('')
+      : '';
+
+    view.innerHTML = `
+      ${barHtml({ title: 'シリーズ', backHref: '#/', backLabel: '一覧' })}
+      <div class="series-new">
+        <div class="inline-form">
+          <input type="text" id="newSeries" placeholder="新しいシリーズの名前" aria-label="新しいシリーズの名前" autocomplete="off">
+          <button type="button" id="addSeries" class="btn btn-primary">作成</button>
+        </div>
+      </div>
+      ${names.length
+        ? `<ul class="rows series-rows">${rows}</ul>`
+        : '<p class="empty">シリーズはまだありません。上の欄に名前を入力して作成してください。</p>'}
+    `;
+
+    // 新しいシリーズを作り、そのシリーズのページ（本を選ぶ入口）へ移動する
+    const addSeries = async () => {
+      const name = $('#newSeries').value.trim();
+      if (!name) return;
+      if (allSeries().includes(name)) {
+        toast('同じ名前のシリーズがあります');
+        return;
+      }
+      state.series.push(name);
+      await DB.setSetting('seriesList', state.series);
+      location.hash = seriesHref(name);
+    };
+    $('#addSeries').addEventListener('click', addSeries);
+    $('#newSeries').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) addSeries();
+    });
+  }
+
+  /* ---------------------------------------------------------------
+   * シリーズ 1 つ分の画面。そのシリーズの本を巻数順に並べる。
+   * 名前の変更、入れる本の選択、シリーズの削除ができる。
+   * --------------------------------------------------------------- */
+  async function renderSeriesDetail(name) {
+    state.books = await DB.getAllBooks();
+    if (!allSeries().includes(name)) {
+      view.innerHTML =
+        barHtml({ title: 'シリーズ', backHref: '#/series', backLabel: 'シリーズ' }) +
+        '<p class="empty">このシリーズは見つかりませんでした。</p>';
+      return;
+    }
+    const books = state.books.filter((b) => b.series === name).sort(compareVolume);
+
+    view.innerHTML = `
+      ${barHtml({ title: 'シリーズ', backHref: '#/series', backLabel: 'シリーズ' })}
+      <div class="series-head">
+        <h2 class="detail-title">${Util.esc(name)}</h2>
+        <p class="note">${books.length} 冊</p>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="${seriesHref(name)}/pick">本を選ぶ</a>
+          <button type="button" id="renameSeries" class="btn">名前を変更</button>
+          <button type="button" id="deleteSeries" class="btn btn-danger">シリーズを削除</button>
+        </div>
+      </div>
+      ${books.length
+        ? `<ul class="rows series-rows">${books.map((b) => rowHtml(b, false)).join('')}</ul>`
+        : '<p class="empty">このシリーズにはまだ本がありません。「本を選ぶ」から追加してください。</p>'}
+    `;
+
+    // 名前の変更：シリーズ名の一覧と、そのシリーズの本の両方を書き換える
+    $('#renameSeries').addEventListener('click', async () => {
+      const newName = (prompt('新しい名前を入力してください', name) || '').trim();
+      if (!newName || newName === name) return;
+      if (allSeries().includes(newName)) {
+        toast('同じ名前のシリーズがあります');
+        return;
+      }
+      state.series = state.series.filter((s) => s !== name).concat(newName);
+      books.forEach((b) => { b.series = newName; });
+      await DB.setSetting('seriesList', state.series);
+      if (books.length) await DB.putBooks(books);
+      location.replace(seriesHref(newName));
+    });
+
+    // シリーズの削除：まとまりだけを消す。本そのものは削除しない
+    $('#deleteSeries').addEventListener('click', async () => {
+      if (!confirm(`シリーズ「${name}」を削除します。\n本は削除されず、シリーズに入っていない状態に戻ります。`)) return;
+      state.series = state.series.filter((s) => s !== name);
+      books.forEach((b) => { b.series = ''; });
+      await DB.setSetting('seriesList', state.series);
+      if (books.length) await DB.putBooks(books);
+      toast('シリーズを削除しました');
+      location.replace('#/series');
+    });
+  }
+
+  /* ---------------------------------------------------------------
+   * シリーズに入れる本を選ぶ画面。
+   * 全ての本をチェック欄付きで並べ、チェックを付けた本をそのシリーズに入れる。
+   * 「保存」を押すまでは何も変更されない。
+   * --------------------------------------------------------------- */
+  async function renderSeriesPick(name) {
+    state.books = await DB.getAllBooks();
+    const books = state.books.slice().sort(compareYomi);
+
+    const rows = books.map((b) => {
+      // 別のシリーズに入っている本は、そのことを表示する（チェックすると、こちらのシリーズへ移る）
+      const other = b.series && b.series !== name ? `「${Util.esc(b.series)}」に入っています` : '';
+      const sub = [Util.esc(b.author || ''), other].filter(Boolean).join('　');
+      // data-search：絞り込み用に、題名・よみ・作者をそろえた文字列を持たせておく
+      const search = [b.title, b.titleYomi, b.author].map(Util.searchText).join('\u0001');
+      return `
+        <li class="row" data-search="${Util.esc(search)}">
+          <label class="row-link pick-row">
+            <input type="checkbox" value="${b.id}"${b.series === name ? ' checked' : ''}>
+            <span class="row-text">
+              <span class="row-title">${titleHtml(b)}</span>
+              ${sub ? `<span class="row-sub">${sub}</span>` : ''}
+            </span>
+          </label>
+        </li>`;
+    }).join('');
+
+    view.innerHTML = `
+      ${barHtml({ title: '本を選ぶ', backHref: seriesHref(name), backLabel: '戻る' })}
+      <div class="tools">
+        <p class="note">「${Util.esc(name)}」に入れる本にチェックを付けて、下の「保存する」を押してください。</p>
+        <input type="search" id="pickQ" class="search" placeholder="題名・作者で絞り込み" aria-label="本を絞り込み" autocomplete="off">
+      </div>
+      ${books.length
+        ? `<ul class="rows" id="pickRows">${rows}</ul>`
+        : '<p class="empty">本がまだ登録されていません。</p>'}
+      <button type="button" id="savePick" class="fab">保存する</button>
+    `;
+
+    // 絞り込み：一致しない行を隠すだけ（隠れた行のチェック状態はそのまま残る）
+    $('#pickQ').addEventListener('input', (e) => {
+      const q = Util.searchText(e.target.value);
+      document.querySelectorAll('#pickRows .row').forEach((li) => {
+        li.hidden = Boolean(q) && !li.dataset.search.includes(q);
+      });
+    });
+
+    // 保存：チェックの状態と今の所属を比べ、変わった本だけを書き換える
+    $('#savePick').addEventListener('click', async () => {
+      const changed = [];
+      document.querySelectorAll('#pickRows input[type="checkbox"]').forEach((box) => {
+        const book = state.books.find((b) => b.id === box.value);
+        if (!book) return;
+        if (box.checked && book.series !== name) {
+          book.series = name;          // このシリーズに入れる
+          changed.push(book);
+        } else if (!box.checked && book.series === name) {
+          book.series = '';            // このシリーズから外す
+          changed.push(book);
+        }
+      });
+      try {
+        if (!state.series.includes(name)) {
+          state.series.push(name);
+          await DB.setSetting('seriesList', state.series);
+        }
+        if (changed.length) await DB.putBooks(changed);
+      } catch (err) {
+        console.error(err);
+        toast('保存できませんでした');
+        return;
+      }
+      toast('シリーズの本を保存しました');
+      location.replace(seriesHref(name));
+    });
   }
 
   init();

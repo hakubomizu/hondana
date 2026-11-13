@@ -606,3 +606,29 @@ textarea { resize: vertical; line-height: 1.6; }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }
+
+/* ---------- 8. シリーズ画面 ---------- */
+
+/* 一覧画面の「シリーズ」ボタン：並べ替えの切り替えの下に、横幅いっぱいで置く */
+a.btn { text-decoration: none; } /* リンクをボタンの見た目にしたときは下線を出さない */
+
+/* シリーズ作成欄 */
+.series-new { padding: 16px; border-bottom: 1px solid var(--line); }
+
+/* シリーズ名の行：左に名前、右に冊数 */
+.series-link { padding: 14px 16px; justify-content: space-between; }
+
+/* シリーズ 1 つ分の画面の見出し部分 */
+.series-head {
+  display: grid;
+  gap: 10px;
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* 本を選ぶ画面の行：チェック欄を押しやすい大きさにする */
+.pick-row { padding-left: 16px; cursor: pointer; }
+.pick-row input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--ai); }
+
+/* 「保存する」をボタン要素で作ったとき、リンク版の「本を登録」と同じ見た目にそろえる */
+button.fab { border: none; font: inherit; font-weight: 600; cursor: pointer; }
