@@ -159,6 +159,9 @@ h1, h2, h3, p { margin: 0; }
   color: var(--ink);
   font: inherit;
   cursor: pointer;
+  /* iPhone の Safari がボタンに付ける独自の見た目を無効にし、ここで指定した色だけで表示させる */
+  -webkit-appearance: none;
+  appearance: none;
 }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-primary {
@@ -169,8 +172,8 @@ h1, h2, h3, p { margin: 0; }
 }
 /* 2 番手のボタン：主要なボタンと同じ形で、色だけ薄い藍色にしたもの（文字は白） */
 .btn-secondary {
-  background: var(--ai-soft);
-  border-color: var(--ai-soft);
+  background: #4F7AA8;
+  border-color: #4F7AA8; /* 枠の色は背景色と同じにする（明るい画面・暗い画面とも共通） */
   color: #FFFFFF;
   font-weight: 600;
 }
@@ -180,12 +183,8 @@ h1, h2, h3, p { margin: 0; }
    隣の「書誌情報のみ書き出す」（薄い藍色＋白い文字）と、濃淡の関係をそろえるため。 */
 .btn-solid {
   background: #23466E;
-  border-color: #23466E;
+  border-color: #23466E; /* 枠の色は背景色と同じにする（明るい画面・暗い画面とも共通） */
   color: #FFFFFF;
-}
-@media (prefers-color-scheme: dark) {
-  /* 暗い背景に埋もれないよう、枠線だけ少し明るくする */
-  .btn-solid { border-color: #4F7AA8; }
 }
 .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
