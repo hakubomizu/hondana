@@ -10,6 +10,7 @@
  *   6. 設定画面（ジャンル管理・バックアップ・書誌検索の設定）
  *   7. 起動処理
  *   8. シリーズ画面（シリーズの一覧・シリーズごとの本・本の選択）
+ *   9. 説明ページ（中継プログラムの作り方）
  *
  * 画面の切り替えは URL の「#」以降（ハッシュ）で行います。
  *   #/            … 一覧
@@ -17,6 +18,7 @@
  *   #/add         … 新しい本の登録
  *   #/edit/本のID … 編集
  *   #/settings    … 設定
+ *   #/help/proxy              … 中継プログラムの作り方の説明
  *   #/series                  … シリーズの一覧
  *   #/series/シリーズ名       … そのシリーズの本
  *   #/series/シリーズ名/pick  … そのシリーズに入れる本の選択
@@ -142,6 +144,10 @@ const App = (() => {
       } else if (name === 'settings') {
         state.route = 'settings';
         await renderSettings();
+        window.scrollTo(0, 0);
+      } else if (name === 'help') {
+        state.route = 'help';
+        await renderHelpProxy();
         window.scrollTo(0, 0);
       } else if (name === 'series') {
         // シリーズ名は URL に入れるとき記号に変換（エンコード）しているので、元に戻して使う
@@ -604,7 +610,6 @@ const App = (() => {
   /** シリーズ選択欄の選択肢の HTML を作る */
   function seriesOptionsHtml(selected) {
     const names = allSeries();
-    if (selected && !names.includes(selected)) names.push(selected);
     return (
       `<option value="">なし</option>` +
       names.map((s) => `<option value="${Util.esc(s)}"${s === selected ? ' selected' : ''}>${Util.esc(s)}</option>`).join('') +
@@ -1021,7 +1026,8 @@ const App = (() => {
 
         <section class="panel">
           <h2>書誌検索</h2>
-          <p>通常は空欄のままで使います。ISBN からの書誌取得が毎回「接続できませんでした」になる場合だけ、中継プログラムの URL を入力してください（作り方は同梱の README を参照）。</p>
+          <p>通常は空欄のままで使います。ISBN からの書誌取得が毎回「接続できませんでした」になる場合だけ、中継プログラムの URL を入力してください。</p>
+          <p><a href="#/help/proxy">中継プログラムの作り方を見る</a></p>
           <label class="field">
             <span class="field-label">中継URL</span>
             <input type="url" id="proxyUrl" value="${Util.esc(proxyUrl)}" placeholder="https://…" autocomplete="off" autocapitalize="off">
@@ -1210,6 +1216,7 @@ const App = (() => {
         state.genres = await DB.getSetting('genres', []);
         state.series = await DB.getSetting('seriesList', []);
         state.sort = await DB.getSetting('sort', 'yomi');
+        await removeAutoSeries(); // 古い版のバックアップに含まれる、自動入力されたシリーズ名を取り除く
         toast('バックアップを読み込みました');
         await renderSettings();
       } catch (err) {
@@ -1229,6 +1236,7 @@ const App = (() => {
       state.genres = await DB.getSetting('genres', []);
       state.series = await DB.getSetting('seriesList', []);
       state.sort = await DB.getSetting('sort', 'yomi');
+      await removeAutoSeries(); // 以前の版で自動入力されたシリーズ名を取り除く
     } catch (err) {
       console.error(err);
       view.innerHTML = '<p class="empty">データの保存場所を開けませんでした。Safari のプライベートブラウズでは使えません。通常のタブで開いてください。</p>';
@@ -1274,13 +1282,27 @@ const App = (() => {
    *   ・どの本がどのシリーズか … 各本の series にシリーズ名を入れる（1 冊につき 1 シリーズ）
    * ================================================================= */
 
-  /** 全てのシリーズ名を返す（一覧に無いが本に付いている名前も含める） */
+  /** 全てのシリーズ名を返す。利用者が自分で作成したシリーズだけが対象 */
   function allSeries() {
-    const names = state.series.slice();
-    state.books.forEach((b) => {
-      if (b.series && !names.includes(b.series)) names.push(b.series);
-    });
-    return names;
+    return state.series.slice();
+  }
+
+  /* ---------------------------------------------------------------
+   * 利用者が作成していないシリーズ名を、本から取り除く。
+   *
+   * 以前の版では、書誌データに含まれるシリーズ名（「〇〇文庫」などの
+   * レーベル名）を自動で本に入力していた。現在はシリーズを利用者が
+   * 自分で作成して本を入れる方式なので、自動で入った名前は不要になる。
+   * そこで「作成済みシリーズの一覧に無い名前」が付いている本を探し、
+   * シリーズなしの状態に戻す。
+   * 起動時と、バックアップを読み込んだ直後に実行する。
+   * --------------------------------------------------------------- */
+  async function removeAutoSeries() {
+    const books = await DB.getAllBooks();
+    const targets = books.filter((b) => b.series && !state.series.includes(b.series));
+    if (targets.length === 0) return;
+    targets.forEach((b) => { b.series = ''; });
+    await DB.putBooks(targets);
   }
 
   /** シリーズのページへのリンク先を作る。名前に記号が入っていても URL が壊れないよう変換する */
@@ -1475,6 +1497,93 @@ const App = (() => {
       }
       toast('シリーズの本を保存しました');
       location.replace(seriesHref(name));
+    });
+  }
+
+  /* =================================================================
+   * 9. 説明ページ（中継プログラムの作り方）
+   *
+   * 設定画面の「中継プログラムの作り方を見る」から開くページ。
+   * iPhone では同梱の README を読めないため、同じ内容をアプリの中で読めるようにしている。
+   * 貼り付けるプログラム（proxy/ndl-proxy.gs）もこのページに表示し、
+   * ボタン 1 つでコピーできるようにしている。
+   * ================================================================= */
+  async function renderHelpProxy() {
+    view.innerHTML = `
+      ${barHtml({ title: '中継プログラムの作り方', backHref: '#/settings', backLabel: '設定' })}
+      <article class="help">
+        <section class="panel">
+          <h2>中継プログラムとは</h2>
+          <p>ブラウザの安全上の決まりにより、このアプリから国立国会図書館サーチ（NDLサーチ）へ直接問い合わせても、結果を読めない場合があります。中継プログラムは、アプリの代わりに NDLサーチへ問い合わせて、結果をアプリに返す役目をします。</p>
+          <p>「書誌を検索」が毎回「NDLサーチに接続できませんでした」になる場合だけ必要です。Google アカウントがあれば無料で作れます。</p>
+          <p class="note">文字の貼り付けが多いので、パソコンでの作業をおすすめします。その場合は、パソコンでこのアプリの同じページを開くと、下のプログラムをコピーできます。</p>
+        </section>
+
+        <section class="panel">
+          <h2>作り方</h2>
+          <ol class="steps">
+            <li>
+              <p>下の「プログラムをコピー」を押して、貼り付けるプログラムをコピーします。</p>
+              <button type="button" id="copyCode" class="btn btn-primary">プログラムをコピー</button>
+              <textarea id="proxyCode" class="code" rows="8" readonly aria-label="中継プログラムの内容">読み込んでいます…</textarea>
+            </li>
+            <li>
+              <p><a href="https://script.google.com/" target="_blank" rel="noopener">Google Apps Script（script.google.com）</a>を開き、Google アカウントでログインして「新しいプロジェクト」を押します。</p>
+            </li>
+            <li>
+              <p>最初から入っている文字（function myFunction … ）をすべて消し、コピーしたプログラムを貼り付けて、保存します。</p>
+            </li>
+            <li>
+              <p>右上の「デプロイ」→「新しいデプロイ」を押し、種類の選択（歯車のマーク）で「ウェブアプリ」を選びます。</p>
+            </li>
+            <li>
+              <p>「次のユーザーとして実行」を「自分」、「アクセスできるユーザー」を「全員」にして、「デプロイ」を押します。</p>
+              <p class="note">初回は「アクセスを承認」の画面が出ます。自分のアカウントを選び、警告が出た場合は「詳細」から先へ進んで許可してください。自分で作ったプログラムに対する確認です。</p>
+            </li>
+            <li>
+              <p>表示された「ウェブアプリ」の URL（https://script.google.com/macros/s/ … /exec）をコピーします。</p>
+            </li>
+            <li>
+              <p>このアプリの設定画面に戻り、「書誌検索」の「中継URL」に貼り付けて、「中継URL を保存」を押します。</p>
+              <a class="btn" href="#/settings">設定画面に戻る</a>
+            </li>
+          </ol>
+        </section>
+
+        <section class="panel">
+          <h2>確認の方法</h2>
+          <p>「本を登録」で ISBN を入力して「書誌を検索」を押し、題名などが自動で入れば成功です。</p>
+          <p class="note">Google の画面の表記は変更されることがあります。同じ名前の項目が見つからない場合は、近い名前の項目を探してください。</p>
+        </section>
+      </article>
+    `;
+
+    // 貼り付けるプログラムの中身を、アプリに同梱しているファイルから読み込んで表示する
+    const codeBox = $('#proxyCode');
+    try {
+      const res = await fetch('proxy/ndl-proxy.gs');
+      if (!res.ok) throw new Error('読み込み失敗');
+      const text = await res.text();
+      if ($('#proxyCode')) $('#proxyCode').value = text;
+    } catch (err) {
+      console.warn(err);
+      codeBox.value = '';
+      codeBox.placeholder = 'プログラムを読み込めませんでした。電波の状況を確認して、ページを開き直してください。';
+      $('#copyCode').disabled = true;
+    }
+
+    // コピーボタン：プログラム全体をクリップボードに入れる
+    $('#copyCode').addEventListener('click', async () => {
+      const box = $('#proxyCode');
+      try {
+        await navigator.clipboard.writeText(box.value);
+        toast('プログラムをコピーしました');
+      } catch (err) {
+        // クリップボード機能を使えない環境では、全体を選択状態にして手動でコピーしてもらう
+        box.focus();
+        box.select();
+        toast('全体を選択しました。「コピー」を押してください');
+      }
     });
   }
 

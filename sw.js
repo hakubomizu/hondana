@@ -30,6 +30,7 @@ const FILES = [
   'js/backup.js',
   'js/app.js',
   'lib/zxing.min.js',
+  'proxy/ndl-proxy.gs', // 説明ページで表示する中継プログラム
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png'

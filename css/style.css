@@ -632,3 +632,24 @@ a.btn { text-decoration: none; } /* リンクをボタンの見た目にした�
 
 /* 「保存する」をボタン要素で作ったとき、リンク版の「本を登録」と同じ見た目にそろえる */
 button.fab { border: none; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* ---------- 9. 説明ページ ---------- */
+
+.help { display: grid; gap: 28px; padding: 20px 16px; }
+
+/* 手順の番号付きリスト */
+.steps { margin: 0; padding-left: 1.5em; display: grid; gap: 18px; }
+.steps li { padding-left: 4px; }
+.steps li > * + * { margin-top: 8px; }
+.steps li::marker { font-weight: 600; color: var(--ai); }
+
+/* プログラムの表示欄：等幅の文字で、折り返さず横にスクロールして読む */
+.code {
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+  resize: vertical;
+}
