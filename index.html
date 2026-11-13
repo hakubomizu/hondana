@@ -40,8 +40,20 @@
 
   <!-- ===== 写真の拡大表示（写真をタップしたときに全画面で表示） ===== -->
   <div id="viewer" class="overlay" hidden>
-    <img id="viewerImg" alt="本の写真（拡大）">
-    <button type="button" id="viewerClose" class="btn">閉じる</button>
+    <!-- 上段：どの本の何枚目かの表示と、閉じるボタン -->
+    <div class="viewer-top">
+      <span id="viewerInfo"></span>
+      <button type="button" id="viewerClose" class="btn">閉じる</button>
+    </div>
+    <!-- 中段：写真。指での拡大・移動・左右送りはこの枠の中で受け付ける -->
+    <div id="viewerStage">
+      <img id="viewerImg" alt="本の写真（拡大）" draggable="false">
+    </div>
+    <!-- 下段：前後の写真へ移るボタン（指で左右に送っても同じ動き） -->
+    <div class="viewer-nav">
+      <button type="button" id="viewerPrev" class="btn">前の写真</button>
+      <button type="button" id="viewerNext" class="btn">次の写真</button>
+    </div>
   </div>
 
   <!-- ===== 画面下に短時間だけ出るお知らせ（「保存しました」など） ===== -->

@@ -85,6 +85,9 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 詳細画面を横にスライドさせたとき、画面全体が横に揺れないようにする */
+body { overflow-x: hidden; }
+
 /* 全画面表示を開いている間は、後ろの画面をスクロールさせない */
 body.no-scroll { overflow: hidden; }
 
@@ -599,8 +602,40 @@ textarea { resize: vertical; line-height: 1.6; }
 .overlay .btn { background: #fff; border-color: #fff; color: #111; }
 
 /* 写真の拡大表示 */
-#viewer { gap: 16px; padding: calc(16px + var(--safe-top)) 12px calc(16px + var(--safe-bottom)); }
-#viewerImg { flex: 1; min-height: 0; max-width: 100%; object-fit: contain; }
+#viewer { align-items: stretch; justify-content: flex-start; }
+.viewer-top, .viewer-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.viewer-top { padding-top: calc(10px + var(--safe-top)); }
+.viewer-nav { padding-bottom: calc(12px + var(--safe-bottom)); }
+#viewerInfo { min-width: 0; font-size: 0.875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-nav .btn:disabled { opacity: 0.35; }
+
+/* 写真を表示する枠。はみ出した部分（拡大時）は隠す */
+#viewerStage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none; /* 指の操作をブラウザに任せず、アプリ側で拡大・移動・左右送りとして扱う */
+  cursor: grab;
+}
+#viewerImg {
+  max-width: 100%;
+  max-height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none; /* 長押しで出る iPhone のメニューを出さない */
+  pointer-events: none;        /* 操作は枠（#viewerStage）で受け取る */
+  will-change: transform;
+}
 
 /* 動きを減らす設定にしている端末では、スクロールの動きを抑える */
 @media (prefers-reduced-motion: reduce) {
@@ -652,4 +687,25 @@ button.fab { border: none; font: inherit; font-weight: 600; cursor: pointer; }
   white-space: pre;
   overflow: auto;
   resize: vertical;
+}
+
+/* ---------- 10. 詳細画面の前後移動 ---------- */
+
+/* 「前の本／次の本」と現在位置（例：3 / 120）の行 */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.pager-count { color: var(--ink-soft); font-size: 0.8125rem; }
+.pager .link-btn:disabled { color: var(--ink-soft); opacity: 0.45; cursor: default; }
+
+/* 詳細画面：縦方向のスクロールはブラウザに任せ、横方向の動きはアプリが受け取って前後移動に使う */
+.detail {
+  touch-action: pan-y;
+  /* 情報の少ない本でも、画面の下の方でスライドできるよう、領域を画面の高さいっぱいに広げる */
+  min-height: calc(100vh - 110px);
+  align-content: start; /* 広げた分の余白は下に集め、中身は上に詰める */
 }

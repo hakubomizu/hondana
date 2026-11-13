@@ -21,16 +21,22 @@ const Backup = (() => {
    * うまく動かない場合があるため、まず「共有」機能（ファイルに保存、
    * AirDrop などを選べる画面）を試し、使えない環境では通常のダウンロードを行う。
    *
+   * withImages
+   *   true  … 写真ごと書き出す（全てを復元できるが、ファイルが大きい）
+   *   false … 書誌情報のみ書き出す（写真と、一覧用の小さな画像を含めない。ファイルが小さい）
+   *
    * 戻り値：書き出した本の冊数
    * --------------------------------------------------------------- */
-  async function exportToFile() {
+  async function exportToFile(withImages) {
     const data = await DB.exportAll();
     const payload = {
       app: APP_ID,
       version: FORMAT_VERSION,
       exportedAt: new Date().toISOString(),
-      books: data.books,
-      images: data.images,
+      includesImages: withImages, // 読み込むときに、写真入りかどうかを見分けるための印
+      // 写真なしの場合は、各本が持つ一覧用の小さな画像（thumb）も取り除く
+      books: withImages ? data.books : data.books.map((b) => Object.assign({}, b, { thumb: '' })),
+      images: withImages ? data.images : [],
       settings: data.settings
     };
 
@@ -40,7 +46,8 @@ const Backup = (() => {
       d.getFullYear() +
       String(d.getMonth() + 1).padStart(2, '0') +
       String(d.getDate()).padStart(2, '0');
-    const fileName = `hondana-backup-${stamp}.json`;
+    // 写真なしの場合は、区別できるようファイル名に「text」を付ける
+    const fileName = withImages ? `hondana-backup-${stamp}.json` : `hondana-backup-${stamp}-text.json`;
 
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const file = new File([blob], fileName, { type: 'application/json' });
@@ -109,7 +116,9 @@ const Backup = (() => {
       }
     }
 
-    await DB.importAll(data, mode);
+    // 写真なしのバックアップを読み込むときは、端末に今ある写真を消さずに残す
+    const keepImages = data.includesImages === false;
+    await DB.importAll(data, mode, keepImages);
 
     if (mode === 'merge') {
       // 一覧は「今のもの」と「バックアップのもの」を合わせて保存し直す

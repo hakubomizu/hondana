@@ -58,6 +58,7 @@ const App = (() => {
     series: [],      // 利用者が名付けたシリーズ名の一覧
     sort: 'yomi',    // 現在の並べ替え
     query: '',       // 検索欄に入力されている文字
+    navIds: [],      // 直前に表示した一覧での本の並び順（詳細画面で前後の本へ移るときに使う）
     listScroll: 0,   // 一覧画面のスクロール位置（詳細から戻ったとき元の位置に戻すため）
     route: ''        // 今どの画面にいるか
   };
@@ -122,7 +123,7 @@ const App = (() => {
 
     // 別の画面へ移るときは、開いたままのカメラや拡大表示を閉じる
     closeScanner();
-    closeViewer();
+    hideViewer();
     form = null;
 
     const hash = location.hash.replace(/^#\/?/, ''); // 例：「book/abc123」
@@ -353,6 +354,7 @@ const App = (() => {
     }
 
     box.innerHTML = html;
+    rememberOrder(box);
   }
 
   /* ---------------------------------------------------------------
@@ -444,6 +446,7 @@ const App = (() => {
 
         // 画面上の並び順（上から 0, 1, 2 …）を、各本の order に書き込む
         const ids = Array.from(rows.children).map((li) => li.dataset.id);
+        state.navIds = ids; // 詳細画面で前後へ移る順番も、新しい並びに合わせる
         const changed = [];
         ids.forEach((id, index) => {
           const book = state.books.find((b) => b.id === id);
@@ -477,9 +480,17 @@ const App = (() => {
    * 本 1 冊の詳細（写真・題名・作者・出版社など）を表示する。
    * --------------------------------------------------------------- */
   async function renderDetail(id) {
-    const book = await DB.getBook(id);
+    state.books = await DB.getAllBooks();
+    const book = state.books.find((b) => b.id === id);
     if (!book) return renderNotFound();
     const images = await DB.getImagesByBook(id);
+
+    // 前後の本を調べる。順番は、直前に見ていた一覧（またはシリーズ）の並びに従う。
+    // 先頭の本には「前」が無く、末尾の本には「次」が無い（null になる）
+    const order = navOrder(id);
+    const position = order.indexOf(id);
+    const prevId = position > 0 ? order[position - 1] : null;
+    const nextId = position < order.length - 1 ? order[position + 1] : null;
 
     // 写真の並び。タップすると拡大表示する
     const gallery = images.length
@@ -518,6 +529,11 @@ const App = (() => {
         backLabel: '一覧',
         rightHtml: `<a class="bar-link" href="#/edit/${book.id}">編集</a>`
       })}
+      <nav class="pager" aria-label="前後の本">
+        <button type="button" id="prevBook" class="link-btn"${prevId ? '' : ' disabled'}>‹ 前の本</button>
+        <span class="pager-count">${position + 1} / ${order.length}</span>
+        <button type="button" id="nextBook" class="link-btn"${nextId ? '' : ' disabled'}>次の本 ›</button>
+      </nav>
       <article class="detail">
         ${gallery}
         <div class="detail-head">
@@ -539,9 +555,16 @@ const App = (() => {
     if (galleryEl) {
       galleryEl.addEventListener('click', (e) => {
         const shot = e.target.closest('.shot');
-        if (shot) openViewer(images[Number(shot.dataset.index)].dataUrl);
+        if (shot) openViewer(book.id, images, Number(shot.dataset.index));
       });
     }
+
+    // 前後の本へ移るボタン。replace を使うので、「一覧」に戻る操作は 1 回で済む
+    $('#prevBook').addEventListener('click', () => { if (prevId) location.replace('#/book/' + prevId); });
+    $('#nextBook').addEventListener('click', () => { if (nextId) location.replace('#/book/' + nextId); });
+
+    // 指で左右にスライドして前後の本へ移れるようにする
+    enableBookSwipe($('.detail'), prevId, nextId);
 
     // 読書状態の切り替え：押したらすぐ保存する（編集画面を開かなくてよい）
     $('.seg-status').addEventListener('click', async (e) => {
@@ -568,18 +591,409 @@ const App = (() => {
   }
 
   /* ---------------------------------------------------------------
-   * 写真の拡大表示を開く／閉じる
+   * 一覧に表示した本の並び順を覚える。
+   * 詳細画面で「前の本／次の本」へ移るときの順番になる。
    * --------------------------------------------------------------- */
-  function openViewer(src) {
-    $('#viewerImg').src = src;
+  function rememberOrder(container) {
+    state.navIds = Array.from(container.querySelectorAll('.row')).map((li) => li.dataset.id);
+  }
+
+  /* ---------------------------------------------------------------
+   * 前後移動に使う本の並び（ID の配列）を返す。
+   *   ・直前に見ていた一覧にその本が含まれていれば、その一覧の並びを使う
+   *     （検索で絞り込んでいた場合は、絞り込んだ範囲の中だけを移動する）。
+   *   ・ページを読み込み直した直後など、一覧の並びが分からないときは、
+   *     現在の並べ替え設定で全ての本を並べたものを使う。
+   * --------------------------------------------------------------- */
+  function navOrder(currentId) {
+    if (state.navIds.includes(currentId)) {
+      // 一覧を表示した後に削除された本は除く
+      return state.navIds.filter((id) => state.books.some((b) => b.id === id));
+    }
+    const books = state.books.slice();
+    if (state.sort === 'custom') {
+      books.sort((a, b) => (a.order || 0) - (b.order || 0));
+    } else if (state.sort === 'new') {
+      books.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    } else if (state.sort === 'genre') {
+      // ジャンルの順（設定画面の順、未分類は最後）→ 同じジャンルの中は五十音順
+      const rank = (b) => {
+        if (!b.genre) return Infinity;
+        const i = state.genres.indexOf(b.genre);
+        return i === -1 ? state.genres.length : i;
+      };
+      books.sort((a, b) => (rank(a) - rank(b)) || collator.compare(a.genre || '', b.genre || '') || compareYomi(a, b));
+    } else {
+      books.sort(compareYomi);
+    }
+    return books.map((b) => b.id);
+  }
+
+  /* ---------------------------------------------------------------
+   * 詳細画面を指で左右にスライドして、前後の本へ移れるようにする。
+   *
+   *   左へスライド … 次の本    右へスライド … 前の本
+   *
+   * 仕組み：
+   *   1. 指の動きが「横方向」だと分かったら、画面を指に合わせて横にずらす。
+   *      （縦方向の動きは通常のスクロールとして扱い、何もしない）
+   *   2. 一定の距離（70px）以上ずらして指を離すと、前後の本へ移る。
+   *   3. 最初の本で右へ、最後の本で左へスライドしたときは、
+   *      画面が少しだけ動いて元に戻る（それ以上は進めないことを示す）。
+   *
+   * 写真の並び（横スクロールする部分）の上で始めた操作は、写真のスクロールを優先する。
+   * マウスでは文字の選択と紛らわしいので反応させない（ボタンで移動できる）。
+   * --------------------------------------------------------------- */
+  function enableBookSwipe(article, prevId, nextId) {
+    let start = null;        // 指を置いた位置
+    let horizontal = false;  // 横方向の操作だと判定済みか
+
+    article.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' || e.target.closest('.gallery')) return;
+      start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      horizontal = false;
+      article.style.transition = 'none';
+    });
+
+    article.addEventListener('pointermove', (e) => {
+      if (!start || e.pointerId !== start.id) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (!horizontal) {
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          horizontal = true;                 // 横方向の操作と判定
+        } else if (Math.abs(dy) > 12) {
+          start = null;                      // 縦方向（スクロール）なので、この操作は扱わない
+          return;
+        } else {
+          return;                            // まだ判定できるほど動いていない
+        }
+      }
+      // 進む先に本があれば指の動きどおりに、無ければ 5 分の 1 だけ動かす
+      const target = dx < 0 ? nextId : prevId;
+      article.style.transform = `translateX(${target ? dx : dx * 0.2}px)`;
+    });
+
+    function finish(e) {
+      if (!start || e.pointerId !== start.id) return;
+      const dx = e.clientX - start.x;
+      const target = dx < 0 ? nextId : prevId;
+      const go = horizontal && e.type === 'pointerup' && Math.abs(dx) > 70 && target;
+      start = null;
+      if (go) {
+        location.replace('#/book/' + target);
+      } else {
+        // 元の位置へなめらかに戻す
+        article.style.transition = 'transform 0.2s';
+        article.style.transform = '';
+      }
+    }
+    article.addEventListener('pointerup', finish);
+    article.addEventListener('pointercancel', finish);
+  }
+
+  /* =================================================================
+   * 写真の拡大表示
+   *
+   * できること
+   *   ・2 本の指を広げる／狭める … 拡大・縮小（指の間の位置を中心に拡大する）
+   *   ・拡大中に 1 本の指で動かす … 見たい箇所へ移動
+   *   ・すばやく 2 回タップ       … その位置を拡大／元の大きさに戻す
+   *   ・等倍のとき左右にスライド  … 次の写真／前の写真へ
+   *   ・パソコンではマウスのホイールで拡大・縮小、←→キーで前後へ
+   *
+   * 写真の順番
+   *   今の本の写真 → 次の本の写真 → … と、本をまたいで連続して見られる。
+   *   本の順番は詳細画面の前後移動と同じ。写真の無い本は飛ばす。
+   *   一番最初の写真より前、一番最後の写真より後へは進めない。
+   * ================================================================= */
+
+  // 拡大表示の現在の状態
+  const viewer = {
+    open: false,
+    originBookId: null, // 開いたときに詳細画面に出ていた本
+    bookId: null,       // 今表示している写真の本
+    images: [],         // その本の写真
+    index: 0,           // 何枚目を表示しているか（0 始まり）
+    scale: 1,           // 拡大率（1 が等倍）
+    x: 0,               // 写真をずらしている量（横）
+    y: 0,               // 写真をずらしている量（縦）
+    busy: false         // 次の本の写真を読み込み中か
+  };
+  const MAX_SCALE = 5;  // 拡大の上限（5 倍）
+
+  /** 拡大表示を開く。bookId の本の写真 images のうち、index 枚目から表示する */
+  function openViewer(bookId, images, index) {
+    viewer.open = true;
+    viewer.originBookId = bookId;
+    viewer.bookId = bookId;
+    viewer.images = images;
+    viewer.index = index;
     $('#viewer').hidden = false;
     document.body.classList.add('no-scroll');
+    showViewerImage();
   }
-  function closeViewer() {
-    if ($('#viewer').hidden) return;
+
+  /** 拡大表示を画面から消す（画面の移動は行わない） */
+  function hideViewer() {
+    if (!viewer.open) return;
+    viewer.open = false;
+    viewer.images = [];
     $('#viewer').hidden = true;
     $('#viewerImg').removeAttribute('src');
     document.body.classList.remove('no-scroll');
+  }
+
+  /**
+   * 利用者の操作で拡大表示を閉じる。
+   * 写真を送って別の本まで進んでいた場合は、後ろの詳細画面もその本に切り替える
+   * （閉じたときに、見ていた写真と違う本が出ていると混乱するため）。
+   */
+  function closeViewer() {
+    if (!viewer.open) return;
+    const movedTo = viewer.bookId !== viewer.originBookId ? viewer.bookId : null;
+    hideViewer();
+    if (movedTo) location.replace('#/book/' + movedTo);
+  }
+
+  /** 写真の位置と拡大率を画面に反映する。animate が true のときはなめらかに動かす */
+  function applyViewerTransform(animate) {
+    const img = $('#viewerImg');
+    img.style.transition = animate ? 'transform 0.2s' : 'none';
+    img.style.transform = `translate(${viewer.x}px, ${viewer.y}px) scale(${viewer.scale})`;
+  }
+
+  /** 拡大中の移動量を、写真の端が画面の内側に入り込まない範囲に収める */
+  function clampViewerPan() {
+    const img = $('#viewerImg');
+    const stage = $('#viewerStage');
+    const maxX = Math.max(0, (img.offsetWidth * viewer.scale - stage.clientWidth) / 2);
+    const maxY = Math.max(0, (img.offsetHeight * viewer.scale - stage.clientHeight) / 2);
+    viewer.x = Math.min(maxX, Math.max(-maxX, viewer.x));
+    viewer.y = Math.min(maxY, Math.max(-maxY, viewer.y));
+  }
+
+  /**
+   * 画面上の点（clientX, clientY）を中心にして、拡大率を newScale に変える。
+   * 「その点に映っている箇所が、拡大後も同じ位置に残る」ようにずらし量を計算する。
+   */
+  function zoomViewerAt(clientX, clientY, newScale, animate) {
+    const rect = $('#viewerStage').getBoundingClientRect();
+    const px = clientX - (rect.left + rect.width / 2);  // 枠の中心から見た点の位置
+    const py = clientY - (rect.top + rect.height / 2);
+    const next = Math.min(MAX_SCALE, Math.max(1, newScale));
+    viewer.x = px - (next / viewer.scale) * (px - viewer.x);
+    viewer.y = py - (next / viewer.scale) * (py - viewer.y);
+    viewer.scale = next;
+    if (next === 1) { viewer.x = 0; viewer.y = 0; }
+    clampViewerPan();
+    applyViewerTransform(animate);
+  }
+
+  /** dir の方向（+1 が次、-1 が前）にある、写真を持つ一番近い本を探す。無ければ null */
+  function neighborBookWithPhotos(dir) {
+    const order = navOrder(viewer.bookId);
+    let i = order.indexOf(viewer.bookId) + dir;
+    while (i >= 0 && i < order.length) {
+      const book = state.books.find((b) => b.id === order[i]);
+      if (book && book.thumb) return book; // thumb（一覧用の小さな画像）があれば写真がある
+      i += dir;
+    }
+    return null;
+  }
+
+  /** dir の方向へ進めるか（今の本に続きの写真があるか、写真を持つ隣の本があるか） */
+  function viewerCanStep(dir) {
+    const i = viewer.index + dir;
+    return (i >= 0 && i < viewer.images.length) || Boolean(neighborBookWithPhotos(dir));
+  }
+
+  /**
+   * dir の方向へ 1 枚進む。進めたら true、端で進めなければ false を返す。
+   * 今の本の写真が尽きたら、隣の本の写真を読み込んで続きとして表示する。
+   */
+  async function viewerStep(dir) {
+    if (!viewer.open || viewer.busy) return false;
+    const i = viewer.index + dir;
+    if (i >= 0 && i < viewer.images.length) {
+      viewer.index = i;
+    } else {
+      const book = neighborBookWithPhotos(dir);
+      if (!book) return false;
+      viewer.busy = true;
+      let images = [];
+      try {
+        images = await DB.getImagesByBook(book.id);
+      } finally {
+        viewer.busy = false;
+      }
+      if (!viewer.open || images.length === 0) return false;
+      viewer.bookId = book.id;
+      viewer.images = images;
+      // 次の本へ進んだときは 1 枚目から、前の本へ戻ったときは最後の 1 枚から表示する
+      viewer.index = dir > 0 ? 0 : images.length - 1;
+    }
+    showViewerImage();
+    return true;
+  }
+
+  /** 現在の写真を表示し、拡大を解除して、上下の表示（題名・枚数・ボタン）を更新する */
+  function showViewerImage() {
+    const img = $('#viewerImg');
+    img.src = viewer.images[viewer.index].dataUrl;
+    viewer.scale = 1;
+    viewer.x = 0;
+    viewer.y = 0;
+    applyViewerTransform(false);
+
+    const book = state.books.find((b) => b.id === viewer.bookId);
+    const title = book ? book.title + (book.volume ? ' ' + book.volume : '') : '';
+    $('#viewerInfo').textContent = `${title}（${viewer.index + 1} / ${viewer.images.length} 枚目）`;
+    // 端まで来たら、その方向のボタンを押せなくする
+    $('#viewerPrev').disabled = !viewerCanStep(-1);
+    $('#viewerNext').disabled = !viewerCanStep(1);
+  }
+
+  /* ---------------------------------------------------------------
+   * 拡大表示での指・マウスの操作を受け付ける準備（起動時に 1 回だけ実行）。
+   *
+   * 画面に触れている指を 1 本ずつ記録し、
+   *   2 本のとき … 指の間隔の変化を拡大率にする（ピンチ操作）
+   *   1 本のとき … 拡大中なら写真の移動、等倍なら左右送り
+   * として扱う。
+   * --------------------------------------------------------------- */
+  function setupViewerGestures() {
+    const stage = $('#viewerStage');
+    const points = new Map(); // 触れている指：指の番号 → 位置
+    let drag = null;          // 1 本指の操作を始めたときの記録
+    let pinch = null;         // 2 本指の操作を始めたときの記録
+    let lastTap = 0;          // 直前のタップの時刻（2 回タップの判定用）
+
+    // 枠の中心から見た位置に直す
+    const fromCenter = (x, y) => {
+      const rect = stage.getBoundingClientRect();
+      return { x: x - (rect.left + rect.width / 2), y: y - (rect.top + rect.height / 2) };
+    };
+    // 1 本指の操作の記録を取り直す（ピンチが終わって指が 1 本残ったときにも使う）
+    const beginDrag = (p) => {
+      drag = { x: p.x, y: p.y, viewX: viewer.x, viewY: viewer.y, time: Date.now(), moved: false };
+    };
+
+    stage.addEventListener('pointerdown', (e) => {
+      if (!viewer.open) return;
+      e.preventDefault();
+      // 指が枠の外へ出ても動きを受け取り続ける（対応していない環境では何もしない）
+      try { stage.setPointerCapture(e.pointerId); } catch (err) { /* 無視してよい */ }
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (points.size === 1) {
+        beginDrag({ x: e.clientX, y: e.clientY });
+      } else if (points.size === 2) {
+        // 2 本目の指が触れた：ピンチ操作の開始時点の状態を記録する
+        const [a, b] = Array.from(points.values());
+        pinch = {
+          distance: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+          center: fromCenter((a.x + b.x) / 2, (a.y + b.y) / 2),
+          scale: viewer.scale,
+          viewX: viewer.x,
+          viewY: viewer.y
+        };
+        drag = null;
+      }
+    });
+
+    stage.addEventListener('pointermove', (e) => {
+      if (!points.has(e.pointerId)) return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (points.size === 2 && pinch) {
+        // ----- ピンチ：指の間隔の比で拡大率を決め、指の中心に合わせて位置を保つ -----
+        const [a, b] = Array.from(points.values());
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        const center = fromCenter((a.x + b.x) / 2, (a.y + b.y) / 2);
+        const next = Math.min(MAX_SCALE, Math.max(1, pinch.scale * (distance / pinch.distance)));
+        viewer.x = center.x - (next / pinch.scale) * (pinch.center.x - pinch.viewX);
+        viewer.y = center.y - (next / pinch.scale) * (pinch.center.y - pinch.viewY);
+        viewer.scale = next;
+        clampViewerPan();
+        applyViewerTransform(false);
+
+      } else if (points.size === 1 && drag) {
+        const dx = e.clientX - drag.x;
+        const dy = e.clientY - drag.y;
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) drag.moved = true;
+
+        if (viewer.scale > 1) {
+          // ----- 拡大中：写真を動かして、見たい箇所を表示する -----
+          viewer.x = drag.viewX + dx;
+          viewer.y = drag.viewY + dy;
+          clampViewerPan();
+        } else {
+          // ----- 等倍：左右送り。進めない方向へは 4 分の 1 だけ動かす -----
+          viewer.x = viewerCanStep(dx < 0 ? 1 : -1) ? dx : dx * 0.25;
+          viewer.y = 0;
+        }
+        applyViewerTransform(false);
+      }
+    });
+
+    async function onPointerEnd(e) {
+      if (!points.has(e.pointerId)) return;
+      const last = points.get(e.pointerId);
+      points.delete(e.pointerId);
+
+      if (pinch) {
+        // ピンチの終了。指が 1 本残っていれば、そこから移動の操作として続ける
+        pinch = null;
+        if (viewer.scale <= 1.02) { viewer.scale = 1; viewer.x = 0; viewer.y = 0; }
+        applyViewerTransform(true);
+        const rest = Array.from(points.values())[0];
+        if (rest) { beginDrag(rest); drag.moved = true; }
+        return;
+      }
+      if (!drag || points.size > 0) return;
+      const record = drag;
+      drag = null;
+      const dx = last.x - record.x;
+
+      // ----- タップ（ほとんど動かさず、すぐ離した）：2 回続けば拡大／元に戻す -----
+      if (!record.moved && e.type === 'pointerup' && Date.now() - record.time < 300) {
+        const now = Date.now();
+        if (now - lastTap < 320) {
+          lastTap = 0;
+          zoomViewerAt(last.x, last.y, viewer.scale > 1 ? 1 : 2.5, true);
+        } else {
+          lastTap = now;
+        }
+        return;
+      }
+
+      // ----- 等倍での左右送り：十分に動かしていれば前後の写真へ -----
+      if (viewer.scale === 1) {
+        const dir = dx < 0 ? 1 : -1;
+        if (e.type === 'pointerup' && Math.abs(dx) > 60 && viewerCanStep(dir)) {
+          const moved = await viewerStep(dir);
+          if (moved) return;
+        }
+        // 送らなかった場合（動きが小さい・端で進めない）は元の位置へ戻す
+        viewer.x = 0;
+        viewer.y = 0;
+        applyViewerTransform(true);
+      }
+    }
+    stage.addEventListener('pointerup', onPointerEnd);
+    stage.addEventListener('pointercancel', onPointerEnd);
+
+    // パソコン向け：マウスのホイールで、カーソルの位置を中心に拡大・縮小
+    stage.addEventListener('wheel', (e) => {
+      if (!viewer.open) return;
+      e.preventDefault();
+      zoomViewerAt(e.clientX, e.clientY, viewer.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15), false);
+    }, { passive: false });
+
+    $('#viewerPrev').addEventListener('click', () => viewerStep(-1));
+    $('#viewerNext').addEventListener('click', () => viewerStep(1));
+    $('#viewerClose').addEventListener('click', closeViewer);
   }
 
   /* =================================================================
@@ -984,6 +1398,7 @@ const App = (() => {
     state.books = await DB.getAllBooks();
     const proxyUrl = await DB.getSetting('proxyUrl', '');
     const lastBackup = await DB.getSetting('lastBackupAt', null);
+    const lastBackupKind = await DB.getSetting('lastBackupKind', '');
 
     // ジャンルごとの冊数を数える
     const counts = {};
@@ -1016,9 +1431,15 @@ const App = (() => {
         <section class="panel">
           <h2>バックアップ</h2>
           <p>本の情報と写真は、この端末のブラウザ内にだけ保存されています。Safari のデータ消去や機種変更に備えて、定期的に書き出してください。</p>
-          <p class="note">最後の書き出し：${lastBackup ? Util.formatDate(lastBackup) : 'まだ書き出していません'}</p>
+          <p class="note">最後の書き出し：${lastBackup
+            ? Util.formatDate(lastBackup) + (lastBackupKind === 'light' ? '（写真なし）' : lastBackupKind === 'full' ? '（写真あり）' : '')
+            : 'まだ書き出していません'}</p>
           <div class="btn-row">
-            <button type="button" id="exportBtn" class="btn btn-primary">バックアップを書き出す</button>
+            <button type="button" id="exportBtn" class="btn btn-primary">写真ごと書き出す</button>
+            <button type="button" id="exportLightBtn" class="btn">書誌情報のみ書き出す（写真なし）</button>
+          </div>
+          <p class="note">「写真ごと」は全てを復元できますが、ファイルが大きくなります。「書誌情報のみ」は題名・作者・ジャンル・シリーズ・メモなどの文字の情報だけを書き出すので、ファイルが小さく済みます。</p>
+          <div class="btn-row">
             <button type="button" id="importBtn" class="btn">バックアップを読み込む</button>
           </div>
           <div id="importPanel" class="import-panel" hidden></div>
@@ -1105,18 +1526,22 @@ const App = (() => {
     });
 
     // ----- バックアップの書き出し -----
-    $('#exportBtn').addEventListener('click', async () => {
+    // withImages が true なら写真ごと、false なら書誌情報のみ（写真なし）で書き出す
+    const runExport = async (withImages) => {
       try {
-        const count = await Backup.exportToFile();
+        const count = await Backup.exportToFile(withImages);
         if (count === null) return; // 共有画面を閉じた場合
         await DB.setSetting('lastBackupAt', Date.now());
-        toast(`${count} 冊分のバックアップを書き出しました`);
+        await DB.setSetting('lastBackupKind', withImages ? 'full' : 'light');
+        toast(`${count} 冊分のバックアップを書き出しました${withImages ? '' : '（写真なし）'}`);
         await renderSettings();
       } catch (err) {
         console.error(err);
         toast('バックアップを書き出せませんでした');
       }
-    });
+    };
+    $('#exportBtn').addEventListener('click', () => runExport(true));
+    $('#exportLightBtn').addEventListener('click', () => runExport(false));
 
     // ----- バックアップの読み込み（ファイル選択を開く。続きは onBackupChosen） -----
     $('#importBtn').addEventListener('click', () => $('#backupInput').click());
@@ -1190,9 +1615,18 @@ const App = (() => {
     }
 
     const when = data.exportedAt ? Util.formatDate(Date.parse(data.exportedAt)) : '日付不明';
+    // 写真なしのバックアップかどうか（includesImages が false のもの）
+    const light = data.includesImages === false;
+    const summary = light
+      ? `本 ${data.books.length} 冊、写真なし`
+      : `本 ${data.books.length} 冊、写真 ${(data.images || []).length} 枚`;
+    const lightNote = light
+      ? '<p class="note">写真を含まないバックアップです。この端末に同じ本の写真が残っている場合、その写真は消さずにそのまま使います。</p>'
+      : '';
     panel.hidden = false;
     panel.innerHTML = `
-      <p>${when} に書き出したバックアップです（本 ${data.books.length} 冊、写真 ${(data.images || []).length} 枚）。読み込み方を選んでください。</p>
+      <p>${when} に書き出したバックアップです（${summary}）。読み込み方を選んでください。</p>
+      ${lightNote}
       <div class="btn-row">
         <button type="button" class="btn" data-mode="merge">今のデータに追加する</button>
         <button type="button" class="btn btn-danger" data-mode="replace">今のデータと置き換える</button>
@@ -1247,12 +1681,12 @@ const App = (() => {
     $('#photoInput').addEventListener('change', onPhotosChosen);
     $('#backupInput').addEventListener('change', onBackupChosen);
     $('#scanClose').addEventListener('click', closeScanner);
-    $('#viewerClose').addEventListener('click', closeViewer);
-    $('#viewer').addEventListener('click', (e) => {
-      if (e.target.id === 'viewer' || e.target.id === 'viewerImg') closeViewer();
-    });
+    setupViewerGestures();
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { closeScanner(); closeViewer(); }
+      // 拡大表示中は、←→キーで前後の写真へ移る
+      if (viewer.open && e.key === 'ArrowLeft') viewerStep(-1);
+      if (viewer.open && e.key === 'ArrowRight') viewerStep(1);
     });
 
     // ----- 画面の切り替えを開始する -----
@@ -1395,6 +1829,9 @@ const App = (() => {
         ? `<ul class="rows series-rows">${books.map((b) => rowHtml(b, false)).join('')}</ul>`
         : '<p class="empty">このシリーズにはまだ本がありません。「本を選ぶ」から追加してください。</p>'}
     `;
+
+    // このシリーズの本の並びを覚える（詳細画面での前後移動が、シリーズの中の順番になる）
+    state.navIds = books.map((b) => b.id);
 
     // 名前の変更：シリーズ名の一覧と、そのシリーズの本の両方を書き換える
     $('#renameSeries').addEventListener('click', async () => {

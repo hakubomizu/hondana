@@ -187,13 +187,49 @@ const DB = (() => {
    *   mode = 'replace' … 今のデータを全て消してから書き戻す（完全に置き換え）
    *   mode = 'merge'   … 今のデータを残したまま追加する（同じ ID は上書き）
    * 1 つの取引で行うので、途中で失敗した場合は全て元に戻る。
+   *
+   * keepImages が true のとき（写真なしのバックアップを読み込むとき）：
+   *   バックアップに写真が入っていないので、端末に今ある写真を消してしまわないよう、
+   *   ・バックアップに含まれる本の写真と、一覧用の小さな画像（thumb）は残す
+   *   ・置き換えの場合、バックアップに含まれない本（＝消える本）の写真だけを削除する
+   *   という動きにする。
    */
-  async function importAll(data, mode) {
+  async function importAll(data, mode, keepImages) {
     const db = await open();
     const tx = db.transaction(['books', 'images', 'settings'], 'readwrite');
     const books = tx.objectStore('books');
     const images = tx.objectStore('images');
     const settings = tx.objectStore('settings');
+
+    if (keepImages) {
+      // まず今ある本を読み、各本の thumb を控えてから書き換える
+      const currentReq = books.getAll();
+      currentReq.onsuccess = () => {
+        const thumbs = new Map(currentReq.result.map((b) => [b.id, b.thumb || '']));
+        const incomingIds = new Set((data.books || []).map((b) => b.id));
+
+        if (mode === 'replace') {
+          books.clear();
+          settings.clear();
+          // バックアップに含まれない本の写真を削除する（写真の中身は読まず、キーだけをたどる）
+          const cursorReq = images.index('bookId').openKeyCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) return;
+            if (!incomingIds.has(cursor.key)) images.delete(cursor.primaryKey);
+            cursor.continue();
+          };
+        }
+        (data.books || []).forEach((b) => {
+          // バックアップ側に thumb が無ければ、端末に残っているものを引き継ぐ
+          books.put(Object.assign({}, b, { thumb: b.thumb || thumbs.get(b.id) || '' }));
+        });
+        (data.settings || []).forEach((s) => {
+          if (mode === 'replace') settings.put(s);
+        });
+      };
+      return txDone(tx);
+    }
 
     if (mode === 'replace') {
       books.clear();
