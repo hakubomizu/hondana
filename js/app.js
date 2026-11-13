@@ -1436,7 +1436,7 @@ const App = (() => {
             ? Util.formatDate(lastBackup) + (lastBackupKind === 'light' ? '（写真なし）' : lastBackupKind === 'full' ? '（写真あり）' : '')
             : 'まだ書き出していません'}</p>
           <div class="btn-row">
-            <button type="button" id="exportBtn" class="btn btn-primary">写真ごと書き出す</button>
+            <button type="button" id="exportBtn" class="btn btn-primary btn-solid">写真ごと書き出す</button>
             <button type="button" id="exportLightBtn" class="btn btn-secondary">書誌情報のみ書き出す（写真なし）</button>
           </div>
           <p class="note">「写真ごと」は全てを復元できますが、ファイルが大きくなります。「書誌情報のみ」は題名・作者・ジャンル・シリーズ・メモなどの文字の情報だけを書き出すので、ファイルが小さく済みます。</p>

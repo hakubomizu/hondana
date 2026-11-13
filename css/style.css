@@ -174,6 +174,19 @@ h1, h2, h3, p { margin: 0; }
   color: #FFFFFF;
   font-weight: 600;
 }
+/* 濃い藍色に白い文字で固定するボタン（「写真ごと書き出す」用）。
+   主要なボタン（.btn-primary）は、暗い画面では「明るい水色＋濃い文字」に切り替わるが、
+   このボタンは明るい画面でも暗い画面でも「濃い藍色＋白い文字」のままにする。
+   隣の「書誌情報のみ書き出す」（薄い藍色＋白い文字）と、濃淡の関係をそろえるため。 */
+.btn-solid {
+  background: #23466E;
+  border-color: #23466E;
+  color: #FFFFFF;
+}
+@media (prefers-color-scheme: dark) {
+  /* 暗い背景に埋もれないよう、枠線だけ少し明るくする */
+  .btn-solid { border-color: #4F7AA8; }
+}
 .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
