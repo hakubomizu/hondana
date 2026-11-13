@@ -1,0 +1,608 @@
+/* =====================================================================
+ * style.css ― アプリの見た目
+ *
+ * 構成
+ *   1. 色・文字などの基本設定（明るい画面／暗い画面）
+ *   2. 共通の部品（上部バー・ボタン・切り替えボタン・お知らせ）
+ *   3. 一覧画面
+ *   4. 詳細画面
+ *   5. 登録・編集画面
+ *   6. 設定画面
+ *   7. 全画面表示（バーコード読み取り・写真の拡大）
+ *
+ * デザインの考え方
+ *   ・題名は明朝体で表示し、蔵書目録のような落ち着いた見た目にする。
+ *   ・各行の左端にある色帯は「背表紙」に見立てたもので、ジャンルごとに色が決まる。
+ * ===================================================================== */
+
+/* ---------- 1. 基本設定 ---------- */
+
+:root {
+  /* 色（明るい画面） */
+  --paper: #F4F6F5;      /* 画面全体の背景（わずかに青みのある白） */
+  --surface: #FFFFFF;    /* 行・入力欄などの面 */
+  --ink: #1C2433;        /* 主な文字 */
+  --ink-soft: #5B6577;   /* 補足の文字 */
+  --line: #D9DEE3;       /* 区切り線 */
+  --ai: #23466E;         /* 藍色：主要なボタン・リンク */
+  --ai-ink: #FFFFFF;     /* 藍色の上に置く文字 */
+  --done: #2F6E4B;       /* 読了を表す緑 */
+  --danger: #A83232;     /* 削除などの注意を表す赤 */
+  --warn-bg: #FFF4D6;    /* 注意メッセージの背景 */
+  --ok-bg: #E3F1E8;      /* 成功メッセージの背景 */
+  --spine-none: #B6BDC7; /* 未分類の背表紙色 */
+  --spine-s: 42%;        /* 背表紙色の鮮やかさ */
+  --spine-l: 46%;        /* 背表紙色の明るさ */
+
+  /* 文字 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-title: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+
+  /* iPhone の画面端（ノッチ・ホームバー）を避けるための余白 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  color-scheme: light;
+}
+
+/* 色（暗い画面）：端末がダークモードのときに自動で切り替わる */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141922;
+    --surface: #1D2430;
+    --ink: #E8ECF1;
+    --ink-soft: #9AA5B5;
+    --line: #303A49;
+    --ai: #8DB4E2;
+    --ai-ink: #10202F;
+    --done: #7FC79C;
+    --danger: #EF8A8A;
+    --warn-bg: #3A3116;
+    --ok-bg: #1B3326;
+    --spine-none: #556072;
+    --spine-s: 45%;
+    --spine-l: 60%;
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* hidden 属性を付けた要素は、他の指定に関係なく必ず隠す */
+[hidden] { display: none !important; }
+
+html {
+  -webkit-text-size-adjust: 100%; /* iPhone を横向きにしたとき文字が勝手に拡大されるのを防ぐ */
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 全画面表示を開いている間は、後ろの画面をスクロールさせない */
+body.no-scroll { overflow: hidden; }
+
+#view {
+  max-width: 720px;   /* パソコンで開いたときに横に広がりすぎないようにする */
+  margin: 0 auto;
+  padding-bottom: calc(96px + var(--safe-bottom)); /* 下の「本を登録」ボタンに隠れない余白 */
+}
+
+a { color: var(--ai); }
+h1, h2, h3, p { margin: 0; }
+
+/* キーボードで操作したとき、選択中の部品が分かるよう枠を出す */
+:focus-visible {
+  outline: 3px solid var(--ai);
+  outline-offset: 2px;
+}
+
+/* ---------- 2. 共通の部品 ---------- */
+
+/* 上部バー：スクロールしても画面上部に残る */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr; /* 左：戻る ／ 中央：画面名 ／ 右：リンク */
+  align-items: center;
+  gap: 8px;
+  padding: calc(10px + var(--safe-top)) 16px 10px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.bar-title { font-size: 1rem; font-weight: 600; }
+.bar-back, .bar-link {
+  font-size: 1rem;
+  text-decoration: none;
+  padding: 6px 0;
+}
+.bar-back::before { content: "‹ "; }
+.bar > :last-child { justify-self: end; }
+
+/* 一覧画面の上部バー：アプリ名を大きく出す */
+.bar-home {
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+.home-title {
+  font-family: var(--font-title);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.home-count { color: var(--ink-soft); font-size: 0.875rem; }
+
+/* ボタン */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px; /* 指で押しやすい高さ */
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-primary {
+  background: var(--ai);
+  border-color: var(--ai);
+  color: var(--ai-ink);
+  font-weight: 600;
+}
+.btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* 文字だけの小さなボタン */
+.link-btn {
+  border: none;
+  background: none;
+  color: var(--ai);
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 10px 6px;
+  cursor: pointer;
+}
+.link-danger { color: var(--danger); }
+
+/* 切り替えボタン（並べ替え・読書状態）：横に並んだ中から 1 つを選ぶ */
+.seg {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1;
+  min-height: 40px;
+  padding: 6px 4px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.seg-btn:first-child { border-left: none; }
+.seg-btn.is-on {
+  background: var(--ai);
+  color: var(--ai-ink);
+  font-weight: 600;
+}
+
+/* 背表紙の色帯：--h にジャンルごとの色相（0〜359）が入る */
+.spine {
+  flex: none;
+  width: 6px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--spine-none);
+}
+.spine[style] { background: hsl(var(--h) var(--spine-s) var(--spine-l)); }
+
+.note, .hint { color: var(--ink-soft); font-size: 0.8125rem; }
+.empty { padding: 48px 24px; text-align: center; color: var(--ink-soft); }
+
+/* 画面下のお知らせ */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(92px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  width: max-content; /* 文字の長さに合わせた幅にする（指定しないと画面の半分の幅で折り返してしまう） */
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ---------- 3. 一覧画面 ---------- */
+
+.tools {
+  display: grid;
+  gap: 10px;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.search {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit; /* 16px 以上にしておくと、iPhone で入力時に画面が拡大されない */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.rows { list-style: none; margin: 0; padding: 0; }
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.row-link {
+  flex: 1;
+  min-width: 0; /* 長い題名でも行からはみ出さないようにする */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.thumb {
+  flex: none;
+  width: 38px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--paper);
+}
+.thumb-none { border: 1px dashed var(--line); }
+.row-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.row-title {
+  font-family: var(--font-title);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.vol {
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.row-sub {
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 読書状態の小さな札 */
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.badge-reading { color: var(--ai); }
+.badge-done { color: var(--done); }
+
+/* ドラッグ用のつまみ（三本線） */
+.grip {
+  flex: none;
+  width: 52px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  cursor: grab;
+  touch-action: none; /* つまみの上では画面スクロールではなくドラッグとして扱う */
+}
+.grip span { width: 18px; height: 2px; border-radius: 1px; background: var(--ink-soft); }
+
+/* ドラッグ中の行：少し浮かせて、どれを動かしているか分かるようにする */
+.row.is-dragging {
+  z-index: 5;
+  box-shadow: 0 6px 18px rgba(20, 30, 50, 0.28);
+  border-bottom-color: transparent;
+}
+.row.is-dragging .grip { cursor: grabbing; }
+
+#list > .note { padding: 10px 16px; }
+
+/* ジャンル別表示の見出し */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px 8px 10px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.group-head .spine { height: 18px; align-self: center; }
+.group-count { margin-left: auto; color: var(--ink-soft); font-size: 0.8125rem; font-weight: 400; }
+.group .rows { border-top: 1px solid var(--line); }
+
+/* 「本を登録」ボタン：画面下に固定 */
+.fab {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 20;
+  min-width: 200px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  border-radius: 26px;
+  background: var(--ai);
+  color: var(--ai-ink);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(20, 30, 50, 0.3);
+}
+
+/* ---------- 4. 詳細画面 ---------- */
+
+.detail { display: grid; gap: 20px; padding: 16px; }
+
+/* 写真の並び：横にスクロールして見る */
+.gallery {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 0 16px 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.shot {
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.shot img { display: block; height: 260px; width: auto; max-width: 80vw; object-fit: contain; }
+.gallery-none {
+  padding: 28px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.detail-head { display: flex; gap: 12px; }
+.detail-title {
+  font-family: var(--font-title);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.detail-yomi { margin-top: 2px; color: var(--ink-soft); font-size: 0.875rem; }
+
+.facts { margin: 0; border-top: 1px solid var(--line); }
+.fact {
+  display: grid;
+  grid-template-columns: 5.5em 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.fact dt { color: var(--ink-soft); font-size: 0.875rem; }
+.fact dd { margin: 0; overflow-wrap: anywhere; }
+
+.memo h3 { margin-bottom: 4px; color: var(--ink-soft); font-size: 0.875rem; font-weight: 400; }
+.memo p { white-space: pre-wrap; overflow-wrap: anywhere; } /* 入力した改行をそのまま表示する */
+
+.detail .btn-danger { justify-self: start; margin-top: 12px; }
+
+/* ---------- 5. 登録・編集画面 ---------- */
+
+.form { display: grid; gap: 18px; padding: 16px; }
+
+.isbn-box {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.isbn-box h2 { font-size: 0.9375rem; }
+.isbn-line { display: flex; gap: 8px; }
+.isbn-line input { flex: 1; min-width: 0; }
+.credit { color: var(--ink-soft); font-size: 0.75rem; }
+
+.msg { font-size: 0.875rem; }
+.msg:empty { display: none; }
+.msg-ok, .msg-warn { padding: 8px 10px; border-radius: 6px; }
+.msg-ok { background: var(--ok-bg); }
+.msg-warn { background: var(--warn-bg); }
+
+.field { display: grid; gap: 6px; margin: 0; padding: 0; border: none; min-width: 0; }
+.field-label { color: var(--ink-soft); font-size: 0.875rem; padding: 0; }
+.field-pair { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+
+input[type="text"], input[type="url"], select, textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+textarea { resize: vertical; line-height: 1.6; }
+
+/* 読書状態の選択（ラジオボタンを押しやすい大きさに） */
+.radios { display: flex; flex-wrap: wrap; gap: 8px; }
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--ai); }
+
+/* 追加した写真の並び */
+.photos { display: flex; flex-wrap: wrap; gap: 10px; }
+.photos:empty { display: none; }
+.photo { display: grid; justify-items: center; gap: 2px; }
+.photo img {
+  width: 92px;
+  height: 128px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.photo-remove {
+  border: none;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 8px;
+  cursor: pointer;
+}
+.form .btn { justify-self: start; }
+
+.form-actions { display: grid; gap: 10px; margin-top: 8px; }
+.form-actions .btn { justify-self: stretch; min-height: 50px; }
+
+/* ---------- 6. 設定画面 ---------- */
+
+.settings { display: grid; gap: 28px; padding: 20px 16px; }
+.panel { display: grid; gap: 10px; }
+.panel h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.0625rem;
+}
+.panel p { font-size: 0.9375rem; }
+.panel p.note { font-size: 0.8125rem; }
+.panel .btn { justify-self: start; }
+
+.genre-list { list-style: none; margin: 0; padding: 0; }
+.genre-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.genre-row .spine { height: 20px; align-self: center; }
+.genre-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.genre-count { color: var(--ink-soft); font-size: 0.8125rem; white-space: nowrap; }
+
+.inline-form { display: flex; gap: 8px; }
+.inline-form input { flex: 1; min-width: 0; }
+
+.import-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+}
+
+/* ---------- 7. 全画面表示 ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: #fff;
+}
+
+/* バーコード読み取り：カメラ映像を画面いっぱいに映す */
+#scanVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* バーコードを合わせる目安の枠。枠の外側を暗くして、合わせる場所を分かりやすくする */
+.scan-frame {
+  position: relative;
+  width: min(78vw, 420px);
+  aspect-ratio: 5 / 2;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+}
+.scan-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px 16px calc(20px + var(--safe-bottom));
+  background: rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+.scan-panel p { font-size: 0.9375rem; }
+.overlay .btn { background: #fff; border-color: #fff; color: #111; }
+
+/* 写真の拡大表示 */
+#viewer { gap: 16px; padding: calc(16px + var(--safe-top)) 12px calc(16px + var(--safe-bottom)); }
+#viewerImg { flex: 1; min-height: 0; max-width: 100%; object-fit: contain; }
+
+/* 動きを減らす設定にしている端末では、スクロールの動きを抑える */
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}

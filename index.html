@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <!-- 画面幅を端末に合わせる。viewport-fit=cover は iPhone の画面端（ノッチ周辺）まで使うための指定 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>本棚</title>
+
+  <!-- ここから：iPhone のホーム画面に追加したとき、アプリのように見せるための指定 -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="本棚">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <meta name="theme-color" content="#F4F6F5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141922" media="(prefers-color-scheme: dark)">
+  <!-- 電話番号と誤認されて ISBN がリンクになるのを防ぐ -->
+  <meta name="format-detection" content="telephone=no">
+  <!-- ここまで -->
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- 各画面（一覧・詳細・登録・設定）の中身は、js/app.js がこの中に書き込む -->
+  <main id="view"></main>
+
+  <!-- ===== バーコード読み取り画面（普段は隠れていて、読み取り時だけ全画面で表示） ===== -->
+  <div id="scanner" class="overlay" hidden>
+    <!-- playsinline：iPhone で映像が勝手に全画面再生になるのを防ぐ -->
+    <video id="scanVideo" playsinline muted autoplay></video>
+    <div class="scan-frame" aria-hidden="true"></div>
+    <div class="scan-panel">
+      <p id="scanMsg" role="status"></p>
+      <button type="button" id="scanClose" class="btn">読み取りをやめる</button>
+    </div>
+  </div>
+
+  <!-- ===== 写真の拡大表示（写真をタップしたときに全画面で表示） ===== -->
+  <div id="viewer" class="overlay" hidden>
+    <img id="viewerImg" alt="本の写真（拡大）">
+    <button type="button" id="viewerClose" class="btn">閉じる</button>
+  </div>
+
+  <!-- ===== 画面下に短時間だけ出るお知らせ（「保存しました」など） ===== -->
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- 写真の撮影・選択に使う入力欄（見えない状態で置き、ボタンから呼び出す） -->
+  <input type="file" id="photoInput" accept="image/*" multiple hidden>
+  <!-- バックアップファイルの選択に使う入力欄 -->
+  <input type="file" id="backupInput" accept=".json,application/json" hidden>
+
+  <!-- プログラムの読み込み。下のファイルが上のファイルを使うので、この順番を変えないこと -->
+  <script src="lib/zxing.min.js"></script> <!-- バーコード読み取りライブラリ -->
+  <script src="js/util.js"></script>       <!-- 共通の小さな関数 -->
+  <script src="js/db.js"></script>         <!-- データの保存と読み出し -->
+  <script src="js/ndl.js"></script>        <!-- NDLサーチ API での書誌取得 -->
+  <script src="js/image.js"></script>      <!-- 写真の縮小・圧縮 -->
+  <script src="js/scanner.js"></script>    <!-- バーコード読み取り -->
+  <script src="js/backup.js"></script>     <!-- バックアップ -->
+  <script src="js/app.js"></script>        <!-- 画面の表示と操作（アプリ本体） -->
+</body>
+</html>
